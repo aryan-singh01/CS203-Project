@@ -1,134 +1,66 @@
 
-# Project Report: Implementation of a 32-bit Floating Point Multiplier in Verilog
+# 32-bit Floating Point and Fixed Point Multiplier in Verilog
 
-## Project Overview
-This project involves the design and implementation of a **32-bit Floating Point Multiplier** in Verilog, adhering to the IEEE 754 standard for single-precision floating-point representation. The multiplier supports basic arithmetic, normalization, rounding, and exception handling mechanisms. It is a key component in high-performance computing, digital signal processing, and various numerical computation applications.
+## Overview
 
----
+This project involves the design and implementation of a 32-bit Floating Point Multiplier and a 32-bit Fixed Point Multiplier using Verilog. The floating-point implementation adheres to the IEEE 754 single-precision standard, while the fixed-point implementation uses the Q16.16 format for numerical computations. 
 
-## Problem Statement
-The primary objective of this project is to design a hardware-based 32-bit Floating Point Multiplier. The implementation must:
-- Extract and process the **sign**, **exponent**, and **mantissa** from the operands.
-- Perform **mantissa multiplication** using efficient gate-level operations.
-- Handle **normalization**, **rounding**, and special cases (e.g., NaN, infinity, and zero).
-- Ensure compliance with the IEEE 754 standard.
+### Features
+- **Floating Point Multiplier**
+  - IEEE 754 single-precision support.
+  - Handles normalization, rounding, and exceptions (e.g., NaN, infinity, zero).
+- **Fixed Point Multiplier**
+  - Implements 32-bit × 32-bit multiplication using Wallace Tree architecture.
+  - Supports Q16.16 format.
 
-### Functional Requirements:
-1. **Sign Calculation**: Determine the result’s sign using XOR gates.
-2. **Exponent Addition**: Add the exponents with bias adjustment, ensuring proper handling of overflow and underflow.
-3. **Mantissa Multiplication**: Multiply the mantissas using a Wallace Tree Multiplier structure.
-4. **Normalization**: Normalize the result by adjusting the mantissa and exponent.
-5. **Rounding**: Round the normalized result to fit within 23 bits for the mantissa.
-6. **Special Cases**: Handle conditions like NaN, infinity, zero, overflow, and underflow.
+### Applications
+- Digital Signal Processing (DSP)
+- Image Processing
+- Scientific Computing
+- Real-Time Control Systems
 
 ---
 
-## Design and Implementation
+## Floating Point Multiplier
 
-### **Sign Calculation**
-The sign of the result is determined by XORing the signs of the two input numbers:
-- Input: `sign_a`, `sign_b`
-- Output: `sign_result`
-- Implementation: XOR gate
+### Functional Requirements
+1. **Sign Calculation**: XOR the signs of the two operands.
+2. **Exponent Addition**: Add exponents with bias adjustment.
+3. **Mantissa Multiplication**: Multiply mantissas using Wallace Tree structure.
+4. **Normalization**: Adjust mantissa and exponent to maintain precision.
+5. **Rounding**: Round result to fit IEEE 754 format.
+6. **Special Cases**: Handle NaN, infinity, zero, overflow, and underflow.
 
-#### Verilog Code:
-```verilog
-module SignCalculation (
-    input sign_a,
-    input sign_b,
-    output sign_result
-);
-    xor(sign_result, sign_a, sign_b);
-endmodule
-```
-
-### **Exponent Calculation**
-Exponents are added, and the bias of 127 (IEEE 754 standard) is subtracted. A Ripple-Carry Adder (RCA) is used for gate-level addition.
-
-#### Verilog Code:
-```verilog
-module RippleCarryAdder (
-    input [7:0] a,
-    input [7:0] b,
-    input cin,
-    output [7:0] sum,
-    output cout
-);
-    wire [8:0] carry;
-    assign carry[0] = cin;
-
-    genvar i;
-    generate
-        for (i = 0; i < 8; i = i + 1) begin : ADDER_STAGE
-            assign sum[i] = a[i] ^ b[i] ^ carry[i];
-            assign carry[i + 1] = (a[i] & b[i]) | (b[i] & carry[i]) | (a[i] & carry[i]);
-        end
-    endgenerate
-
-    assign cout = carry[8];
-endmodule
-```
-
-### **Mantissa Multiplication**
-Mantissa multiplication is performed using a **Wallace Tree Multiplier**, which generates partial products and reduces them efficiently using adders.
-
-#### Partial Product Generation:
-```verilog
-module PartialProductGenerator (
-    input [23:0] a,
-    input [23:0] b,
-    output [23:0] pp [23:0] // 24 partial products
-);
-    genvar i, j;
-    generate
-        for (i = 0; i < 24; i = i + 1) begin : ROW_GEN
-            for (j = 0; j < 24; j = j + 1) begin : COL_GEN
-                and(pp[i][j], a[i], b[j]); // AND gate for each partial product bit
-            end
-        end
-    endgenerate
-endmodule
-```
-
-### **Normalization and Rounding**
-The normalization logic ensures the mantissa fits within 23 bits while adjusting the exponent appropriately. Rounding logic rounds the result to maintain precision.
-
-#### Normalization Code:
-```verilog
-module Normalize (
-    input [47:0] mantissa,
-    input [7:0] exponent,
-    output reg [23:0] normalized_mantissa,
-    output reg [8:0] normalized_exponent
-);
-    always @(*) begin
-        if (mantissa[47]) begin
-            normalized_mantissa = mantissa[46:23];
-            normalized_exponent = exponent + 1;
-        end else begin
-            normalized_mantissa = mantissa[45:22];
-            normalized_exponent = exponent - 1;
-        end
-    end
-endmodule
-```
-
-### **Special Cases Handling**
-- **NaN**: If either operand is NaN, the result is NaN.
-- **Infinity**: If one operand is infinity, the result depends on the other operand.
-- **Zero**: Multiplication by zero results in zero.
-- **Overflow**: Exponents exceeding the representable range result in infinity.
-- **Underflow**: Exponents below the minimum range result in zero.
+### Key Components
+- **Sign Calculation**: Determines the result sign using XOR gates.
+- **Exponent Addition**: Uses a ripple-carry adder for bias-adjusted addition.
+- **Mantissa Multiplication**: Uses a Wallace Tree Multiplier for efficient computation.
+- **Normalization and Rounding**: Adjusts mantissa and exponent to fit within 23 bits.
 
 ---
 
-## Testbench
-A comprehensive testbench was developed to validate the multiplier. Test cases include:
-- Multiplication of positive and negative numbers.
-- Edge cases: NaN, infinity, zero, subnormal numbers.
-- Overflow and underflow scenarios.
+## Fixed Point Multiplier
 
-### Sample Test Case:
+### Design Features
+- Q16.16 format: 16 integer bits + 16 fractional bits.
+- Wallace Tree multiplier for partial product reduction.
+- Overflow detection and modular design.
+
+### Performance Metrics
+- **Speed**: Single-cycle operation.
+- **Resolution**: 0.0000152587890625.
+- **Range**: -32768.0 to +32767.99998474121.
+
+---
+
+## Testing and Validation
+
+### Testbench Features
+- Validates positive and negative multiplications.
+- Tests special cases like NaN, infinity, and zero.
+- Includes overflow and underflow scenarios.
+
+### Sample Test Case
 ```verilog
 initial begin
     $monitor("Time: %0t | A: %h | B: %h | Result: %h", $time, a, b, result);
@@ -142,23 +74,40 @@ initial begin
     a = 32'h00000000; // 0.0
     b = 32'h40400000; // 3.0
     #10;
-
-    // Additional cases: infinity, NaN, and edge values...
 end
 ```
 
 ---
 
 ## Results and Analysis
-### Functional Verification:
-- All test cases passed successfully.
-- Special cases like NaN, infinity, and zero handled correctly.
 
-### Performance Metrics:
-- **Gate Count**: Optimized through gate-level design.
-- **Delay**: Critical path analysis indicated the design meets performance requirements.
+- **Floating Point Multiplier**:
+  - Adheres to IEEE 754 standards.
+  - Correctly handles special cases.
+- **Fixed Point Multiplier**:
+  - High-performance multiplier with Q16.16 format.
+  - Optimized for speed and area.
 
 ---
 
-## Conclusion
-The 32-bit Floating Point Multiplier was successfully implemented using Verilog. The design adhered to the IEEE 754 standard, ensuring accurate representation and handling of floating-point numbers. This project demonstrated the practical application of digital logic design principles in implementing complex arithmetic units.
+## Future Work
+
+1. Pipelining for higher throughput.
+2. Extending to double-precision IEEE 754 format.
+3. Optimizing power consumption with clock gating.
+4. Supporting configurable precision for flexible applications.
+
+---
+
+## Project Team
+- Raman
+- Kanwarveer Singh Chadha
+- Divyansh Barodiya
+- Divyanshu Kumar Verma
+- Aryan Singh
+- Ayush Tyagi
+
+---
+
+**Version**: 1.0  
+**Date**: November 24, 2024
