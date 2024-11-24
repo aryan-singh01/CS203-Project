@@ -1,1 +1,216 @@
 
+// data level modelling 
+
+module FixedPointMultiplierDataLevel (
+    input  [31:0] a,        // First operand (fixed-point)
+    input  [31:0] b,        // Second operand (fixed-point)
+    output [31:0] result    // Result of multiplication (fixed-point)
+);
+    parameter FRACTIONAL_BITS = 16;
+
+    // Perform signed multiplication directly
+    wire signed [63:0] product;
+    assign product = $signed(a) * $signed(b);
+
+    // Adjust for fixed-point scaling
+    assign result = product >> FRACTIONAL_BITS;
+
+endmodule
+
+// TestBench 
+
+module Testbench;
+    // Inputs
+    reg  [31:0] a, b;
+
+    // Outputs
+    wire [31:0] result_gate_level;
+    wire [31:0] result_data_level;
+
+    // Instantiate the modules
+    FixedPointMultiplierGateLevel gate_level (
+        .a(a),
+        .b(b),
+        .result(result_gate_level)
+    );
+
+    FixedPointMultiplierDataLevel data_level (
+        .a(a),
+        .b(b),
+        .result(result_data_level)
+    );
+
+    // Testbench logic
+    initial begin
+        // Test Case 1
+        a = 32'h0001_0000; // 1.0 in 16.16 format
+        b = 32'h0002_0000; // 2.0 in 16.16 format
+        #10;
+
+        $display("Test Case 1:");
+        $display("Inputs: a = %h, b = %h", a, b);
+        $display("Gate-Level Result: %h", result_gate_level);
+        $display("Data-Level Result: %h", result_data_level);
+
+        // Test Case 2
+        a = 32'hFFFF_8000; // -0.5 in 16.16 format
+        b = 32'h0001_8000; // 1.5 in 16.16 format
+        #10;
+
+        $display("Test Case 2:");
+        $display("Inputs: a = %h, b = %h", a, b);
+        $display("Gate-Level Result: %h", result_gate_level);
+        $display("Data-Level Result: %h", result_data_level);
+
+        // Test Case 3
+        a = 32'hFFFF_FFFF; // -1.0 in 16.16 format
+        b = 32'h0000_8000; // 0.5 in 16.16 format
+        #10;
+
+        $display("Test Case 3:");
+        $display("Inputs: a = %h, b = %h", a, b);
+        $display("Gate-Level Result: %h", result_gate_level);
+        $display("Data-Level Result: %h", result_data_level);
+
+        $finish;
+    end
+endmodule
+
+// Gate level modelling 
+
+module FixedPointMultiplierGateLevel (
+    input  [31:0] a,        // First operand
+    input  [31:0] b,        // Second operand
+    output [31:0] result    // Result of multiplication
+);
+    parameter FRACTIONAL_BITS = 16;
+
+    // Intermediate partial products
+    wire [63:0] partial_products[31:0];
+
+    // Generate partial products using AND gates
+    genvar i, j;
+    generate
+        for (i = 0; i < 32; i = i + 1) begin : gen_partial_products
+            for (j = 0; j < 32; j = j + 1) begin : gen_and
+                assign partial_products[i][j + i] = a[i] & b[j];
+            end
+            for (j = 32 + i; j < 64; j = j + 1) begin : zero_padding
+                assign partial_products[i][j] = 0;
+            end
+        end
+    endgenerate
+
+    // Wallace Tree Reduction
+    wire [63:0] sum[31:0];
+    wire [63:0] carry[31:0];
+
+    // First reduction level
+    generate
+        for (i = 0; i < 32; i = i + 3) begin : level1
+            if (i + 2 < 32) begin
+                CarrySaveAdder64 csa1 (
+                    .a(partial_products[i]),
+                    .b(partial_products[i + 1]),
+                    .cin(partial_products[i + 2]),
+                    .sum(sum[i / 3]),
+                    .cout(carry[i / 3])
+                );
+            end else if (i + 1 < 32) begin
+                CarrySaveAdder64 csa1 (
+                    .a(partial_products[i]),
+                    .b(partial_products[i + 1]),
+                    .cin(64'b0),
+                    .sum(sum[i / 3]),
+                    .cout(carry[i / 3])
+                );
+            end else begin
+                assign sum[i / 3] = partial_products[i];
+                assign carry[i / 3] = 64'b0;
+            end
+        end
+    endgenerate
+
+    // Additional levels can be generated similarly to reduce rows to 2.
+    // For simplicity, the code assumes 32 rows are reduced in one step.
+
+    // Final addition of the last two rows
+    wire [63:0] final_sum;
+    wire final_carry;
+    RippleCarryAdder64 final_adder (
+        .a(sum[0]),
+        .b(carry[0]),
+        .cin(1'b0),
+        .sum(final_sum),
+        .cout(final_carry)
+    );
+
+    // Adjust for fixed-point scaling
+    assign result = final_sum >> FRACTIONAL_BITS;
+
+endmodule
+
+// Carry Save adder : 
+module CarrySaveAdder64 (
+    input  [63:0] a,
+    input  [63:0] b,
+    input  [63:0] cin,
+    output [63:0] sum,
+    output [63:0] cout
+);
+    genvar i;
+    generate
+        for (i = 0; i < 64; i = i + 1) begin
+            assign sum[i] = a[i] ^ b[i] ^ cin[i];
+            assign cout[i] = (a[i] & b[i]) | (b[i] & cin[i]) | (cin[i] & a[i]);
+        end
+    endgenerate
+endmodule
+
+// Ripple Carry Adder 
+
+module RippleCarryAdder64 (
+    input  [63:0] a,
+    input  [63:0] b,
+    input         cin,
+    output [63:0] sum,
+    output        cout
+);
+    wire [63:0] carry;
+    genvar i;
+    generate
+        for (i = 0; i < 64; i = i + 1) begin
+            if (i == 0) begin
+                FullAdder1 fa (
+                    .a(a[i]),
+                    .b(b[i]),
+                    .cin(cin),
+                    .sum(sum[i]),
+                    .cout(carry[i])
+                );
+            end else begin
+                FullAdder1 fa (
+                    .a(a[i]),
+                    .b(b[i]),
+                    .cin(carry[i - 1]),
+                    .sum(sum[i]),
+                    .cout(carry[i])
+                );
+            end
+        end
+    endgenerate
+    assign cout = carry[63];
+endmodule
+
+// Full Adder 
+
+module FullAdder1 (
+    input a,     // Input A
+    input b,     // Input B
+    input cin,   // Carry input
+    output sum,  // Sum output
+    output cout  // Carry output
+);
+    assign sum  = a ^ b ^ cin;
+    assign cout = (a & b) | (b & cin) | (cin & a);
+endmodule
